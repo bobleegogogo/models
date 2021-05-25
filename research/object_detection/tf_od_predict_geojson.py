@@ -15,7 +15,7 @@ import glob
 import six.moves.urllib as urllib
 import tensorflow as tf
 import tarfile
-
+import pdb
 
 from io import StringIO
 import zipfile
@@ -57,15 +57,14 @@ def OutputGeojson( task_id, prediction_id, score, bbox):
     keywordsDf = gp.GeoDataFrame(d, geometry='bbox')
 
     filename = 'OD_prediction' + '.geojson'
-
     output_dir = 'prediction_result'
+
     if not os.path.exists(output_dir):
       os.makedirs(output_dir)
       
     out_path = os.path.join(output_dir, filename)
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(keywordsDf.to_json(ensure_ascii = False))
-
 
 		
 
@@ -103,27 +102,15 @@ def tf_od_pred():
                 (boxes, scores, classes, num) = sess.run(
                   [detection_boxes, detection_scores, detection_classes, num_detections],
                   feed_dict={image_tensor: image_np_expanded})
-                # draw_bounding_box_on_image(image, boxes, )
-                # Visualization of the results of a detection.
-                vis_image = vis_util.visualize_boxes_and_labels_on_image_array(
-                         image_np,
-                         np.squeeze(boxes),
-                         np.squeeze(classes).astype(np.int32),
-                         np.squeeze(scores),
-                         category_index,
-                         use_normalized_coordinates=True,
-                         line_thickness=1)
-                print("{} boxes in {} image tile!".format(len(boxes), image_path))
-                image_pil = Image.fromarray(np.uint8(vis_image)).convert('RGB')
-                with tf.gfile.Open(image_path, 'w') as fid:
-                     image_pil.save(fid, 'PNG')
+
                 
-                M = tf.image.non_max_suppression(np.squeeze(boxes), np.squeeze(scores), 20, iou_threshold=0.5)
+                M = tf.image.non_max_suppression(np.squeeze(boxes), np.squeeze(scores), boxes.shape[1], iou_threshold=0.3)
                 M = M.eval()
                 task = os.path.splitext(os.path.basename(image_path))[0]
                 scores = np.squeeze(((scores*100).transpose()).astype(np.int))
-                scores_ls = scores.tolist()
-                scores_ls = [scores_ls[i] for i in M]
+                scores_ls_all = scores.tolist()
+                #scores_ls = scores.tolist()
+                scores_ls = [scores_ls_all[i] for i in M]
                 bboxe = (boxes*256).astype(np.int)
                 bboxe = np.squeeze(bboxe)
                 if bboxe.any():
@@ -131,40 +118,24 @@ def tf_od_pred():
                     bboxe_ls = [bboxe_ls[i] for i in M]
 
                 for count, box in enumerate(bboxe_ls, start=0):
+                    #pdb.set_trace()
                     box = [max(0, min(255, x)) for x in box[:4]]
-                    (left, right, top, bottom) = (box[0], box[2], box[1], box[3])
-                    box_polygon=[(left, top), (left, bottom), (right, bottom), (right, top), (left, top)]
+                    (left, right, top, bottom) = (box[1], box[3], 255-box[0], 255-box[2])
+                    box_polygon = [(left, top), (left, bottom), (right, bottom), (right, top), (left, top)]
                     bbox.append(box_polygon)
-                    #prediction bbox polygon
+                    #prediction bbox polygon    
             
             
                     task_id.append(task)
 			
                     #ID in total prediction
                     num_box = count+1
-                    prediction_id.append(num_box )
+                    prediction_id.append(num_box)
             
                     #score of each box prediction
                     score.append(scores_ls[count])
-        
             OutputGeojson( task_id, prediction_id, score, bbox)
    
-           
-            
-      
-            
-
-            
-            
-        
-		    
-		
-		   
-		  
-		   
-		
-		
-
 
 
 if __name__ =='__main__':
@@ -179,7 +150,7 @@ if __name__ =='__main__':
     num_classes = 1
     #Directory to test images path
     test_image_path = op.join(os.getcwd(), FLAGS.test_image_path)
-    test_imgs = glob.glob(test_image_path + "/*.jpg")
+    test_imgs = glob.glob(test_image_path + "/*.png") + glob.glob(test_image_path + "/*.jpg")
 
     ############
     #Load the frozen tensorflow model
@@ -200,3 +171,4 @@ if __name__ =='__main__':
     categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=num_classes, use_display_name=True)
     category_index = label_map_util.create_category_index(categories)
     tf_od_pred()
+
